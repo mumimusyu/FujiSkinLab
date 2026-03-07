@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/* ===== Color System ===== */
+:root {
+  --background: #a0aac8;
+  --sub-background: #f5f0dc;
+  --foreground: #5a5a60;
+  --accent: #b4646e;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ===== Optional Dark Mode (無効化したいなら削除可) ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #a0aac8;
+    --sub-background: #f5f0dc;
+    --foreground: #5a5a60;
+    --accent: #b4646e;
+  }
+}
+
+/* ===== Base Style ===== */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== Utility Classes ===== */
+.bg-sub {
+  background-color: var(--sub-background);
+}
+
+.text-accent {
+  color: var(--accent);
+}
+
+.bg-accent {
+  background-color: var(--accent);
+  color: white;
+}
+
+.card {
+  background-color: var(--sub-background);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
