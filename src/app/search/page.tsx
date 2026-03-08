@@ -1,187 +1,64 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { collection, getDocs, query, orderBy } from "firebase/firestore"
+import { useState } from "react"
 import { db } from "@/lib/firebase"
+import { collection, query, where, getDocs } from "firebase/firestore"
 import SkinCard from "@/components/SkinCard"
-import { Skin } from "@/types/skin"
 
 export default function SearchPage() {
 
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const [keyword, setKeyword] = useState("")
+  const [skins, setSkins] = useState<any[]>([])
 
-  const queryText = searchParams.get("q") || ""
+  const search = async () => {
 
-  const [keyword, setKeyword] = useState(queryText)
-  const [history, setHistory] = useState<string[]>([])
-  const [skins, setSkins] = useState<Skin[]>([])
-  const [loading, setLoading] = useState(false)
+    if (!keyword) return
 
-  useEffect(() => {
-
-    const stored = localStorage.getItem("searchHistory")
-
-    if (stored) {
-      setHistory(JSON.parse(stored))
-    }
-
-  }, [])
-
-
-  useEffect(() => {
-
-    if (!queryText) {
-      setSkins([])
-      return
-    }
-
-    const fetchSkins = async () => {
-
-      setLoading(true)
-
-      const q = query(
-        collection(db, "skins"),
-        orderBy("createdAt", "desc")
-      )
-
-      const snapshot = await getDocs(q)
-
-      const data: Skin[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<Skin, "id">),
-      }))
-
-      const filtered = data.filter((skin) =>
-        skin.title.toLowerCase().includes(queryText.toLowerCase())
-      )
-
-      setSkins(filtered)
-      setLoading(false)
-    }
-
-    fetchSkins()
-
-  }, [queryText])
-
-
-  const handleSearch = (e: React.FormEvent) => {
-
-    e.preventDefault()
-
-    if (!keyword.trim()) return
-
-    const newHistory = [
-      keyword,
-      ...history.filter((h) => h !== keyword)
-    ].slice(0, 10)
-
-    setHistory(newHistory)
-
-    localStorage.setItem(
-      "searchHistory",
-      JSON.stringify(newHistory)
+    const q = query(
+      collection(db, "skins"),
+      where("searchKeywords", "array-contains", keyword)
     )
 
-    router.push(`/search?q=${encodeURIComponent(keyword)}`)
-  }
+    const snap = await getDocs(q)
 
+    const result = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }))
+
+    setSkins(result)
+  }
 
   return (
 
-    <div className="space-y-10">
+    <div className="max-w-5xl mx-auto mt-10 space-y-8">
 
-      {/* 検索バー */}
-
-      <form onSubmit={handleSearch} className="max-w-xl">
+      <div className="flex gap-3">
 
         <input
-          type="text"
-          placeholder="スキンを検索"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          className="w-full px-4 py-3 border rounded-xl"
+          placeholder="スキン検索"
+          className="flex-1 p-3 rounded-xl border"
         />
 
-      </form>
+        <button
+          onClick={search}
+          className="px-6 bg-[var(--accent)] text-white rounded-xl"
+        >
+          検索
+        </button>
 
+      </div>
 
-      {/* 検索履歴 */}
+      <div className="grid grid-cols-3 gap-6">
 
-      {!queryText && (
+        {skins.map((skin) => (
+          <SkinCard key={skin.id} skin={skin} />
+        ))}
 
-        <div>
-
-          <h2 className="text-lg font-semibold mb-4">
-            検索履歴
-          </h2>
-
-          {history.length === 0 ? (
-            <p className="opacity-60">
-              まだ検索履歴がありません
-            </p>
-          ) : (
-
-            <div className="flex flex-wrap gap-2">
-
-              {history.map((h) => (
-
-                <button
-                  key={h}
-                  onClick={() =>
-                    router.push(`/search?q=${encodeURIComponent(h)}`)
-                  }
-                  className="px-3 py-1 bg-gray-200 rounded-full text-sm"
-                >
-                  {h}
-                </button>
-
-              ))}
-
-            </div>
-
-          )}
-
-        </div>
-
-      )}
-
-
-      {/* 検索結果 */}
-
-      {queryText && (
-
-        <div>
-
-          <h2 className="text-xl font-bold mb-6">
-            「{queryText}」の検索結果
-          </h2>
-
-          {loading ? (
-            <p>検索中...</p>
-          ) : skins.length === 0 ? (
-            <p>該当するスキンがありません</p>
-          ) : (
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-
-              {skins.map((skin) => (
-                <SkinCard
-                  key={skin.id}
-                  skin={skin}
-                />
-              ))}
-
-            </div>
-
-          )}
-
-        </div>
-
-      )}
+      </div>
 
     </div>
-
   )
 }
