@@ -4,22 +4,49 @@ import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { useAuthState } from "react-firebase-hooks/auth"
 import { signOut } from "firebase/auth"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 
 export default function Header() {
   const [user, loading] = useAuthState(auth)
+  const [keyword, setKeyword] = useState("")
+  const router = useRouter()
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!keyword.trim()) return
+
+    router.push(`/search?q=${encodeURIComponent(keyword)}`)
+    setKeyword("")
+  }
 
   return (
     <header className="bg-[var(--sub-background)] border-b">
       <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
 
-        <Link href="/" className="text-xl font-bold">
-          FujiSkinLab
-        </Link>
+        <div className="flex items-center gap-6">
+
+          <Link href="/" className="text-xl font-bold">
+            FujiSkinLab
+          </Link>
+
+          <form onSubmit={handleSearch}>
+            <input
+              type="text"
+              placeholder="スキンを検索"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="px-3 py-1 rounded-md border text-sm"
+            />
+          </form>
+
+        </div>
 
         <nav className="flex items-center gap-6 text-sm">
 
           <Link href="/upload" className="hover:opacity-70">
-            Upload
+            スキンを公開
           </Link>
 
           {loading ? null : user ? (
@@ -42,14 +69,15 @@ export default function Header() {
                 onClick={() => signOut(auth)}
                 className="opacity-70 hover:opacity-100"
               >
-                Logout
+                ログアウト
               </button>
             </>
           ) : (
             <Link href="/login">
-              Login
+              ログイン
             </Link>
           )}
+
         </nav>
       </div>
     </header>

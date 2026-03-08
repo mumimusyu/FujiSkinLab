@@ -5,25 +5,7 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import SkinCard from "@/components/SkinCard"
 
-type Hashtag = {
-  id: string
-  tag: string
-}
-
-type Skin = {
-  id: string
-  title: string
-  imageUrl: string
-  skinType: "classic" | "slim"
-  creatorId: string
-  creatorName?: string
-  creatorPhotoURL?: string
-  createdAt?: any
-  viewCount?: number
-  likeCount?: number
-  downloadCount?: number
-  hashtags?: Hashtag[]
-}
+import { Skin } from "../types/skin"
 
 export default function Home() {
   const [skins, setSkins] = useState<Skin[]>([])
