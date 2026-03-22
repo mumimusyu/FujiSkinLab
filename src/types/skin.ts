@@ -21,4 +21,8 @@ export type Skin = {
   downloadCount?: number
 
   hashtags?: Hashtag[]
+
+  dailyViews?: {
+    [date: string]: number
+  }
 }

@@ -1,10 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { collection, addDoc, serverTimestamp } from "firebase/firestore"
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  doc,
+  setDoc,
+  increment,
+} from "firebase/firestore"
 import { db, auth } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
 import { useAuthState } from "react-firebase-hooks/auth"
+
 import { DndContext, closestCenter } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -13,7 +21,6 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import HashtagEditor from "@/components/HashtagEditor"
 
 type LinkItem = {
   id: string
@@ -35,6 +42,7 @@ function SortableItem({
   updateLink: (id: string, key: "label" | "url", value: string) => void
   removeLink: (id: string) => void
 }) {
+
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: link.id })
 
@@ -125,12 +133,12 @@ function SortableHashtagItem({
       >
         🗑
       </button>
-
     </div>
   )
 }
 
 export default function UploadPage() {
+
   const router = useRouter()
   const [user, loadingAuth] = useAuthState(auth)
 
@@ -139,15 +147,18 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState("")
   const [skinType, setSkinType] = useState<"classic" | "slim">("classic")
+
   const [usagePermission, setUsagePermission] =
     useState<"allowed" | "disallowed">("allowed")
+
   const [editPermission, setEditPermission] =
     useState<"allowed" | "disallowed">("disallowed")
+
   const [links, setLinks] = useState<LinkItem[]>([])
+  const [hashtags, setHashtags] = useState<HashtagItem[]>([])
+
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
-
-  const [hashtags, setHashtags] = useState<HashtagItem[]>([])
 
   const isInvalid = (value: any) =>
     submitted && (!value || value === "")
@@ -223,6 +234,7 @@ export default function UploadPage() {
   }
 
   const uploadToCloudinary = async (file: File) => {
+
     const formData = new FormData()
     formData.append("file", file)
     formData.append("upload_preset", "FujiSkinLab_cloudinary")
@@ -238,7 +250,6 @@ export default function UploadPage() {
     const data = await res.json()
 
     if (!res.ok || !data.secure_url) {
-      console.error("Cloudinary error:", data)
       throw new Error("Cloudinary upload failed")
     }
 
@@ -246,16 +257,26 @@ export default function UploadPage() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
+
     e.preventDefault()
     setSubmitted(true)
 
     if (!title || !file) return
 
     try {
+
       setLoading(true)
 
       const imageUrl = await uploadToCloudinary(file)
 
+      // ハッシュタグ正規化
+      const cleanedTags = hashtags
+        .map((t) => t.tag.trim().toLowerCase().replace(/^#/, ""))
+        .filter((t) => t !== "")
+
+      const uniqueTags = Array.from(new Set(cleanedTags))
+
+      // スキン保存
       await addDoc(collection(db, "skins"), {
         title,
         description,
@@ -270,17 +291,44 @@ export default function UploadPage() {
             ? editPermission
             : null,
         links,
-        hashtags,
+
+        hashtags: uniqueTags.map((tag) => ({
+          id: crypto.randomUUID(),
+          tag,
+        })),
+
+        tags: uniqueTags,
+
         viewCount: 0,
         likeCount: 0,
         downloadCount: 0,
         createdAt: serverTimestamp(),
       })
 
+      // ★ tagStats更新
+      for (const tag of uniqueTags) {
+
+        const ref = doc(db, "tagStats", tag)
+
+        await setDoc(
+          ref,
+          {
+            tag,
+            count: increment(1),
+            recentCount: increment(1),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      }
+
       router.push("/")
+
     } catch (err) {
-      console.error("Upload error:", err)
+
+      console.error(err)
       alert("アップロード中にエラーが発生しました")
+
     } finally {
       setLoading(false)
     }
@@ -290,7 +338,8 @@ export default function UploadPage() {
   if (!user) return <p className="p-10">ログインしてください</p>
 
   return (
-    <div className="max-w-xl mx-auto mt-10 bg-white p-8 rounded-2xl shadow space-y-6">
+    <div className="max-w-xl mx-auto mt-10 bg-[var(--sub-background)] p-8 rounded-2xl shadow space-y-6">
+
       <h1 className="text-2xl font-bold">
         スキンをアップロード
       </h1>
@@ -301,53 +350,24 @@ export default function UploadPage() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="スキン名"
-          className={`w-full p-3 rounded-xl bg-[var(--sub-background)] border-2 ${isInvalid(title)
+          className={`w-full p-3 rounded-xl bg-[var(--background)] border-2 ${
+            isInvalid(title)
               ? "border-[var(--accent)]"
               : "border-transparent"
-            }`}
+          }`}
         />
 
-        <div className="space-y-4">
-          <DndContext
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={links.map((l) => l.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {links.map((link) => (
-                <SortableItem
-                  key={link.id}
-                  link={link}
-                  updateLink={updateLink}
-                  removeLink={removeLink}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-
-          <button
-            type="button"
-            onClick={addLink}
-            className="px-4 py-2 bg-[var(--accent)] text-white rounded-xl"
-          >
-            ＋URLを追加
-          </button>
-        </div>
-
+        {/* ハッシュタグ */}
         <div className="space-y-4">
 
           <DndContext
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-
             <SortableContext
               items={hashtags.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
             >
-
               {hashtags.map((tag) => (
                 <SortableHashtagItem
                   key={tag.id}
@@ -356,9 +376,7 @@ export default function UploadPage() {
                   removeTag={removeTag}
                 />
               ))}
-
             </SortableContext>
-
           </DndContext>
 
           <button
@@ -375,53 +393,108 @@ export default function UploadPage() {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="説明（任意）"
-          className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
+          className="w-full p-3 rounded-xl bg-[var(--background)]"
         />
-
-        <select
-          value={skinType}
-          onChange={(e) =>
-            setSkinType(e.target.value as any)
-          }
-          className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
-        >
-          <option value="classic">Classic</option>
-          <option value="slim">Slim</option>
-        </select>
-
-        <select
-          value={usagePermission}
-          onChange={(e) =>
-            setUsagePermission(e.target.value as any)
-          }
-          className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
-        >
-          <option value="allowed">使用OK</option>
-          <option value="disallowed">使用NG</option>
-        </select>
-
-        {usagePermission === "allowed" && (
-          <select
-            value={editPermission}
-            onChange={(e) =>
-              setEditPermission(e.target.value as any)
-            }
-            className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
-          >
-            <option value="allowed">加工OK</option>
-            <option value="disallowed">加工NG</option>
-          </select>
-        )}
 
         <input
           type="file"
           accept="image/png"
           onChange={handleFileChange}
-          className={`w-full p-3 rounded-xl bg-[var(--sub-background)] border-2 ${isInvalid(file)
+          className={`w-full p-3 rounded-xl bg-[var(--background)] border-2 ${
+            isInvalid(file)
               ? "border-[var(--accent)]"
               : "border-transparent"
-            }`}
+          }`}
         />
+
+        {/* スキンタイプ */}
+        <div className="space-y-2">
+          <p className="text-sm opacity-70">スキンタイプ</p>
+
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setSkinType("classic")}
+              className={`px-4 py-2 rounded-xl ${skinType === "classic"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
+                }`}
+            >
+              Classic
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSkinType("slim")}
+              className={`px-4 py-2 rounded-xl ${skinType === "slim"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
+                }`}
+            >
+              Slim
+            </button>
+          </div>
+        </div>
+
+        {/* 使用許可 */}
+        <div className="space-y-2">
+          <p className="text-sm opacity-70">使用設定</p>
+
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setUsagePermission("allowed")}
+              className={`px-4 py-2 rounded-xl ${usagePermission === "allowed"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
+                }`}
+            >
+              使用OK
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setUsagePermission("disallowed")}
+              className={`px-4 py-2 rounded-xl ${usagePermission === "disallowed"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
+                }`}
+            >
+              使用NG
+            </button>
+          </div>
+        </div>
+
+        {/* 加工許可（使用OKのときだけ） */}
+        {usagePermission === "allowed" && (
+          <div className="space-y-2">
+            <p className="text-sm opacity-70">加工設定</p>
+
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => setEditPermission("allowed")}
+                className={`px-4 py-2 rounded-xl ${editPermission === "allowed"
+                    ? "bg-[var(--accent)] text-white"
+                    : "bg-[var(--background)]"
+                  }`}
+              >
+                加工OK
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditPermission("disallowed")}
+                className={`px-4 py-2 rounded-xl ${editPermission === "disallowed"
+                    ? "bg-[var(--accent)] text-white"
+                    : "bg-[var(--background)]"
+                  }`}
+              >
+                加工NG
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           type="submit"
@@ -432,6 +505,7 @@ export default function UploadPage() {
         </button>
 
       </form>
+
     </div>
   )
 }

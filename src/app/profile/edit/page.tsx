@@ -52,7 +52,7 @@ function SortableItem({
 
       <div className="flex-1 space-y-2">
         <input
-          className="w-full p-2 rounded-lg bg-white"
+          className="w-full p-2 rounded-lg bg-[var(--background)]"
           placeholder="サイト名"
           value={link.label}
           onChange={(e) =>
@@ -60,7 +60,7 @@ function SortableItem({
           }
         />
         <input
-          className="w-full p-2 rounded-lg bg-white"
+          className="w-full p-2 rounded-lg bg-[var(--background)]"
           placeholder="URL"
           value={link.url}
           onChange={(e) =>
@@ -80,6 +80,7 @@ function SortableItem({
 }
 
 export default function EditProfilePage() {
+
   const user = auth.currentUser
   const router = useRouter()
 
@@ -149,19 +150,19 @@ export default function EditProfilePage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto mt-10">
+    <div className="max-w-2xl mx-auto mt-10 px-4">
 
-      <div className="bg-white rounded-2xl shadow p-8 space-y-8">
+      <div className="bg-[var(--sub-background)] rounded-2xl shadow p-6 sm:p-8 space-y-8">
 
-        {/* ヘッダー行 */}
+        {/* ヘッダー */}
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-xl sm:text-2xl font-semibold">
             プロフィール編集
           </h1>
 
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-[var(--accent)] text-white rounded-xl"
+            className="px-5 py-2 bg-[var(--accent)] text-white rounded-xl"
           >
             保存
           </button>
@@ -171,7 +172,7 @@ export default function EditProfilePage() {
         <div className="space-y-2">
           <p className="text-sm opacity-70">表示名</p>
           <input
-            className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
+            className="w-full p-3 rounded-xl bg-[var(--background)]"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
@@ -181,13 +182,14 @@ export default function EditProfilePage() {
         <div className="space-y-2">
           <p className="text-sm opacity-70">説明</p>
           <textarea
-            className="w-full p-3 rounded-xl bg-[var(--sub-background)]"
+            className="w-full p-3 rounded-xl bg-[var(--background)] leading-relaxed"
+            rows={4}
             value={bio}
             onChange={(e) => setBio(e.target.value)}
           />
         </div>
 
-        {/* URL編集 */}
+        {/* リンク */}
         <div className="space-y-4">
           <p className="text-sm opacity-70">リンク</p>
 

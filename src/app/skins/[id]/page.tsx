@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { db } from "@/lib/firebase"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import SkinViewer from "@/components/SkinViewer"
 import Link from "next/link"
 import { useAuthState } from "react-firebase-hooks/auth"
@@ -45,12 +45,13 @@ type Skin = {
   likeCount?: number
   downloadCount?: number
 
-  hashtags?: string[]
+  hashtags?: Hashtag[]
 }
 
 export default function SkinDetail() {
 
   const params = useParams()
+  const router = useRouter()
   const id = params.id as string
 
   const [skin, setSkin] = useState<Skin | null>(null)
@@ -71,13 +72,41 @@ export default function SkinDetail() {
 
         setSkin(snap.data() as Skin)
 
-        // まだカウントしていない場合のみ
         if (!countedRef.current) {
 
           countedRef.current = true
 
+          const today = (() => {
+            const d = new Date()
+            const y = d.getFullYear()
+            const m = String(d.getMonth() + 1).padStart(2, "0")
+            const day = String(d.getDate()).padStart(2, "0")
+            return `${y}-${m}-${day}`
+          })()
+
+          const viewKey = `viewed_${id}_${today}`
+
+          if (localStorage.getItem(viewKey)) return
+
+          localStorage.setItem(viewKey, "1")
+
+          const sessionId = localStorage.getItem("sessionId") ||
+            crypto.randomUUID()
+
+          localStorage.setItem("sessionId", sessionId)
+
+          const viewRef = doc(db, "skins", id, "views", sessionId)
+          const viewSnap = await getDoc(viewRef)
+
+          if (viewSnap.exists()) return
+
+          await setDoc(viewRef, {
+            createdAt: serverTimestamp(),
+          })
+
           await updateDoc(skinRef, {
             viewCount: increment(1),
+            [`dailyViews.${today}`]: increment(1),
           })
         }
       }
@@ -168,22 +197,41 @@ export default function SkinDetail() {
       )
     }
   }
+
   const handleDownload = async () => {
 
-    const skinRef = doc(db, "skins", id)
+    try {
 
-    await updateDoc(skinRef, {
-      downloadCount: increment(1)
-    })
+      const skinRef = doc(db, "skins", id)
 
-    setSkin(prev =>
-      prev ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 } : prev
-    )
+      // ダウンロード数カウント
+      await updateDoc(skinRef, {
+        downloadCount: increment(1)
+      })
 
-    const link = document.createElement("a")
-    link.href = skin.imageUrl
-    link.download = `${skin.title}.png`
-    link.click()
+      setSkin(prev =>
+        prev ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 } : prev
+      )
+
+      const res = await fetch(skin.imageUrl)
+
+      const blob = await res.blob()
+
+      const url = window.URL.createObjectURL(blob)
+
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${skin.title}.png`
+      a.click()
+
+      window.URL.revokeObjectURL(url)
+
+    } catch (err) {
+
+      console.error(err)
+      alert("ダウンロードに失敗しました")
+
+    }
   }
 
 
@@ -216,7 +264,7 @@ export default function SkinDetail() {
       </div>
 
 
-      <div className="bg-[#f5f0dc] rounded-2xl p-8 relative space-y-6">
+      <div className="bg-[var(--sub-background)] rounded-2xl p-8 relative space-y-6">
 
         <div className="flex items-center gap-4 text-sm opacity-60">
 
@@ -230,8 +278,8 @@ export default function SkinDetail() {
           <button
             onClick={toggleLike}
             className={`flex items-center gap-1 transition ${liked
-              ? "text-[var(--accent)]"
-              : "text-gray-400"
+                ? "text-[var(--accent)]"
+                : "text-gray-400"
               }`}
           >
             <span>♡</span>
@@ -245,19 +293,34 @@ export default function SkinDetail() {
 
         </div>
 
+
+        {/* ハッシュタグ */}
+
         {skin.hashtags && skin.hashtags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
-            {skin.hashtags.map((tagObj: any, i: number) => (
-              <span key={tagObj.id || i}>
+
+            {skin.hashtags.map((tagObj, i) => (
+
+              <span
+                key={tagObj.id || i}
+                onClick={() =>
+                  router.push(`/search?q=${encodeURIComponent("#" + tagObj.tag)}`)
+                }
+                className="cursor-pointer hover:underline text-sm"
+              >
                 #{tagObj.tag}
               </span>
+
             ))}
+
           </div>
         )}
+
 
         <h1 className="text-2xl font-bold">
           {skin.title}
         </h1>
+
 
         <div className="flex items-center gap-3">
 
@@ -318,15 +381,16 @@ export default function SkinDetail() {
 
         {skin.usagePermission === "allowed" && (
           <div className="pt-4">
-            <a
-              href={skin.imageUrl.replace("/upload/", "/upload/fl_attachment/")}
-              className="bg-accent text-white px-6 py-2 rounded-xl inline-block"
+
+            <button
+              onClick={handleDownload}
+              className="bg-accent text-white px-6 py-2 rounded-xl"
             >
               ダウンロード
-            </a>
+            </button>
+
           </div>
         )}
-
 
       </div>
 

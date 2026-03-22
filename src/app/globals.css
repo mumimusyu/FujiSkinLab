@@ -2,22 +2,21 @@
 
 /* ===== Color System ===== */
 :root {
-  --background: #a0aac8;
-  --sub-background: #f5f0dc;
-  --foreground: #5a5a60;
-  --accent: #b4646e;
+  --background: #dee2e6;
+  --sub-background: #e9ecef;
+  --foreground: #343a40;
+  --accent: #f38aa5;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* ===== Optional Dark Mode (無効化したいなら削除可) ===== */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #a0aac8;
-    --sub-background: #f5f0dc;
-    --foreground: #5a5a60;
-    --accent: #b4646e;
+    --background: #212529;
+    --sub-background: #343a40;
+    --foreground: #e9ecef;
+    --accent: #c23350;
   }
 }
 

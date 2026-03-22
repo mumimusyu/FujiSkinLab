@@ -14,16 +14,25 @@ export default function SkinViewer({
   skinType,
   mode = "detail",
 }: Props) {
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<skinview3d.SkinViewer | null>(null)
 
   useEffect(() => {
+
+    // ===== SSR対策 =====
+    if (typeof window === "undefined") return
+
+    // ===== canvas未生成対策（最重要）=====
     if (!canvasRef.current) return
 
+    // ===== StrictMode / 再描画対策 =====
     if (viewerRef.current) {
       viewerRef.current.dispose()
+      viewerRef.current = null
     }
 
+    // ===== viewer生成 =====
     const viewer = new skinview3d.SkinViewer({
       canvas: canvasRef.current,
       width: mode === "detail" ? 300 : 180,
@@ -32,33 +41,37 @@ export default function SkinViewer({
 
     viewerRef.current = viewer
 
-    // 共通設定
+    // ===== 共通設定 =====
     viewer.controls.enableZoom = false
     viewer.controls.enablePan = false
     viewer.zoom = 1.0
     viewer.fov = 30
 
+    // ===== モード別設定 =====
     if (mode === "card") {
-      // 一覧カードは完全固定
       viewer.controls.enableRotate = false
-      viewer.playerObject.rotation.y = Math.PI / 8
-      viewer.playerObject.rotation.x = Math.PI / 12
     } else {
-      // 詳細ページはドラッグ回転可
       viewer.controls.enableRotate = true
-      viewer.playerObject.rotation.y = Math.PI / 8
-      viewer.playerObject.rotation.x = Math.PI / 12
     }
 
+    viewer.playerObject.rotation.y = Math.PI / 8
+    viewer.playerObject.rotation.x = Math.PI / 12
+
+    // ===== スキン読み込み =====
     if (skinUrl) {
       viewer.loadSkin(skinUrl, {
         model: skinType === "slim" ? "slim" : "default",
       })
     }
 
+    // ===== クリーンアップ =====
     return () => {
-      viewer.dispose()
+      if (viewerRef.current) {
+        viewerRef.current.dispose()
+        viewerRef.current = null
+      }
     }
+
   }, [skinUrl, skinType, mode])
 
   return <canvas ref={canvasRef} />

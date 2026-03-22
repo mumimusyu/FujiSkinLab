@@ -42,7 +42,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="bg-white p-10 rounded-2xl shadow-sm text-center space-y-6">
+      <div className="bg-[var(--sub-background)] p-10 rounded-2xl shadow-sm text-center space-y-6">
         <h1 className="text-2xl font-bold">
           FujiSkinLab にログイン
         </h1>

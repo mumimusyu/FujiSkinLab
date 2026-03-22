@@ -6,6 +6,7 @@ import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import SkinViewer from "./SkinViewer"
 import { Skin } from "../types/skin"
+import { useRouter } from "next/navigation"
 
 type Props = {
   skin: Skin
@@ -61,6 +62,8 @@ export default function SkinCard({ skin }: Props) {
 
   }, [creatorId])
 
+  const router = useRouter()
+
 
   if (!id) return null
 
@@ -112,7 +115,15 @@ export default function SkinCard({ skin }: Props) {
           {skin.hashtags && skin.hashtags.length > 0 && (
             <div className="text-xs opacity-60 overflow-hidden text-ellipsis whitespace-nowrap">
               {skin.hashtags?.map((tagObj: { id: string; tag: string }) => (
-                <span key={tagObj.id} className="mr-2">
+                <span
+                  key={tagObj.id}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    router.push(`/search?q=${encodeURIComponent("#" + tagObj.tag)}`)
+                  }}
+                  className="mr-2 cursor-pointer hover:underline"
+                >
                   #{tagObj.tag}
                 </span>
               ))}
