@@ -4,7 +4,6 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { doc, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import SkinViewer from "./SkinViewer"
 import { Skin } from "../types/skin"
 import { useRouter } from "next/navigation"
 
@@ -23,15 +22,14 @@ export default function SkinCard({ skin }: Props) {
     id,
     title,
     imageUrl,
+    thumbnailUrl, // ★追加
     creatorId,
     creatorName,
-    skinType,
   } = skin
 
   const [creator, setCreator] = useState<CreatorData | null>(null)
 
   const getTimeAgo = (timestamp: any) => {
-
     if (!timestamp) return ""
 
     const date = timestamp.toDate()
@@ -43,99 +41,52 @@ export default function SkinCard({ skin }: Props) {
 
     if (minutes < 60) return `${minutes}分前`
     if (hours < 24) return `${hours}時間前`
-
     return `${days}日前`
   }
 
   useEffect(() => {
-
     const fetchCreator = async () => {
-
       const snap = await getDoc(doc(db, "users", creatorId))
-
       if (snap.exists()) {
         setCreator(snap.data() as CreatorData)
       }
     }
-
     if (creatorId) fetchCreator()
-
   }, [creatorId])
 
   const router = useRouter()
 
-
   if (!id) return null
 
+  // ★ サムネイル優先
+  const displayImage = thumbnailUrl || imageUrl
 
   return (
-
     <Link href={`/skins/${id}`}>
 
       <div className="bg-[var(--sub-background)] rounded-2xl p-4 hover:shadow-lg transition">
 
-        <div className="bg-white rounded-2xl p-4 mb-4">
-
-          <div className="flex justify-center">
-
-            <SkinViewer
-              skinUrl={imageUrl}
-              skinType={skinType}
-              mode="card"
-            />
-
-          </div>
-
+        {/* サムネイル */}
+        <div className="bg-white rounded-2xl p-2 mb-4 flex items-end justify-center h-[200px]">
+          <img
+            src={displayImage}
+            alt={title}
+            className="h-full object-contain"
+          />
         </div>
-
 
         <div className="space-y-2">
 
-          <div className="flex items-center gap-3 text-xs opacity-60">
-
-            <span>
-              {getTimeAgo(skin.createdAt)}
-            </span>
-
-            <div className="flex items-center gap-1">
-              <span>👁</span>
-              <span>{skin.viewCount || 0}</span>
-            </div>
-
-            <span className="flex items-center gap-1">
-              ♡ {skin.likeCount || 0}
-            </span>
-
-            <span className="flex items-center gap-1">
-              ⬇ {skin.downloadCount || 0}
-            </span>
-
+          {/* 投稿日だけ残す */}
+          <div className="text-xs opacity-60">
+            {getTimeAgo(skin.createdAt)}
           </div>
-
-          {skin.hashtags && skin.hashtags.length > 0 && (
-            <div className="text-xs opacity-60 overflow-hidden text-ellipsis whitespace-nowrap">
-              {skin.hashtags?.map((tagObj: { id: string; tag: string }) => (
-                <span
-                  key={tagObj.id}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    router.push(`/search?q=${encodeURIComponent("#" + tagObj.tag)}`)
-                  }}
-                  className="mr-2 cursor-pointer hover:underline"
-                >
-                  #{tagObj.tag}
-                </span>
-              ))}
-            </div>
-          )}
 
           <h2 className="font-semibold text-lg">
             {title}
           </h2>
 
           <div className="flex items-center gap-2 text-sm">
-
             <img
               src={
                 typeof skin.creatorPhotoURL === "string" &&
@@ -150,7 +101,6 @@ export default function SkinCard({ skin }: Props) {
             <span className="opacity-80">
               {(creator?.displayName || creatorName || "unknown").replace(/"/g, "")}
             </span>
-
           </div>
 
         </div>

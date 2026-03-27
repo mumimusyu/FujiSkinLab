@@ -140,12 +140,6 @@ export default function EditProfilePage() {
   const handleSave = async () => {
     if (!user) return
 
-    await updateDoc(doc(db, "users", user.uid), {
-      displayName,
-      bio,
-      links,
-    })
-
     router.push(`/users/${user.uid}`)
   }
 

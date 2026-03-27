@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import {
   collection,
   getDocs,
@@ -8,6 +8,8 @@ import {
   orderBy,
   limit,
   startAfter,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import SkinCard from "@/components/SkinCard"
@@ -18,8 +20,12 @@ export default function Home() {
 
   const [ranking, setRanking] = useState<Skin[]>([])
   const [skins, setSkins] = useState<Skin[]>([])
-  const [lastDoc, setLastDoc] = useState<any>(null)
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
   const [loading, setLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+
+  // ★ 多重実行防止ロック
+  const fetchingRef = useRef(false)
 
   // ランキング取得
   useEffect(() => {
@@ -32,59 +38,76 @@ export default function Home() {
 
   const fetchMore = async () => {
 
-    if (loading) return
+    // ★ 完全ガード
+    if (fetchingRef.current || !hasMore) return
+
+    fetchingRef.current = true
     setLoading(true)
 
-    let q
+    try {
 
-    if (lastDoc) {
-      q = query(
-        collection(db, "skins"),
-        orderBy("createdAt", "desc"),
-        startAfter(lastDoc),
-        limit(20)
-      )
-    } else {
-      q = query(
-        collection(db, "skins"),
-        orderBy("createdAt", "desc"),
-        limit(20)
-      )
-    }
+      let q
 
-    const snap = await getDocs(q)
+      if (lastDoc) {
+        q = query(
+          collection(db, "skins"),
+          orderBy("createdAt", "desc"),
+          startAfter(lastDoc),
+          limit(20)
+        )
+      } else {
+        q = query(
+          collection(db, "skins"),
+          orderBy("createdAt", "desc"),
+          limit(20)
+        )
+      }
 
-    const newData: Skin[] = snap.docs.map(doc => ({
-      id: doc.id,
-      ...(doc.data() as Omit<Skin, "id">),
-    }))
+      const snap = await getDocs(q)
 
-    // ===== ここが修正ポイント（重複排除）=====
-    setSkins(prev => {
+      // ★ データ終了
+      if (snap.empty) {
+        setHasMore(false)
+        return
+      }
 
-      const merged = [...prev, ...newData]
-
-      const map = new Map<string, Skin>()
-
-      merged.forEach(item => {
-        map.set(item.id, item)
+      const newData: Skin[] = snap.docs.map(doc => {
+        const data = doc.data() as Omit<Skin, "id">
+        return {
+          id: doc.id,
+          ...data,
+        }
       })
 
-      return Array.from(map.values())
-    })
+      // ★ 重複排除
+      setSkins(prev => {
+        const merged = [...prev, ...newData]
+        const map = new Map<string, Skin>()
+        merged.forEach(item => map.set(item.id, item))
+        return Array.from(map.values())
+      })
 
-    setLastDoc(snap.docs[snap.docs.length - 1])
-    setLoading(false)
+      setLastDoc(snap.docs[snap.docs.length - 1])
+
+    } catch (err) {
+      console.error("fetchMore error:", err)
+    } finally {
+      setLoading(false)
+      fetchingRef.current = false
+    }
   }
 
+  // 初回読み込み（1回のみ）
   useEffect(() => {
     fetchMore()
   }, [])
 
-  // スクロール検知
+  // スクロール検知（最適化版）
   useEffect(() => {
 
     const handleScroll = () => {
+
+      if (fetchingRef.current || !hasMore) return
 
       if (
         window.innerHeight + window.scrollY >=
@@ -94,10 +117,13 @@ export default function Home() {
       }
     }
 
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
+    window.addEventListener("scroll", handleScroll, { passive: true })
 
-  }, [lastDoc, loading])
+    return () => {
+      window.removeEventListener("scroll", handleScroll)
+    }
+
+  }, [lastDoc, hasMore])
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-10">
@@ -136,7 +162,15 @@ export default function Home() {
           ))}
         </div>
 
-        {loading && <p className="text-center mt-4">読み込み中...</p>}
+        {loading && hasMore && (
+          <p className="text-center mt-4">読み込み中...</p>
+        )}
+
+        {!hasMore && (
+          <p className="text-center mt-4 text-sm opacity-60">
+            すべて読み込みました
+          </p>
+        )}
       </div>
 
     </main>

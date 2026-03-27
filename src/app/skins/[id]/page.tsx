@@ -10,11 +10,10 @@ import { auth } from "@/lib/firebase"
 import {
   doc,
   getDoc,
-  updateDoc,
-  increment,
   setDoc,
-  deleteDoc,
   serverTimestamp,
+  runTransaction,
+  increment,
 } from "firebase/firestore"
 
 type LinkItem = {
@@ -57,11 +56,13 @@ export default function SkinDetail() {
   const [skin, setSkin] = useState<Skin | null>(null)
   const [liked, setLiked] = useState(false)
 
-  const [user] = useAuthState(auth)
+  const [user, loading] = useAuthState(auth)
   const countedRef = useRef(false)
 
-  // スキン取得 + 閲覧数
+  // ===== スキン取得 + 閲覧数（安全化） =====
   useEffect(() => {
+
+    if (!id || loading) return
 
     const fetchSkin = async () => {
 
@@ -70,8 +71,28 @@ export default function SkinDetail() {
 
       if (snap.exists()) {
 
-        setSkin(snap.data() as Skin)
+        const data = snap.data()
 
+        // ★ データ正規化（UI崩れ防止）
+        setSkin({
+          title: data.title ?? "",
+          description: data.description ?? "",
+          imageUrl: data.imageUrl ?? "",
+          skinType: data.skinType ?? "classic",
+          creatorName: data.creatorName ?? "不明",
+          creatorId: data.creatorId ?? "",
+          creatorPhotoURL: data.creatorPhotoURL ?? "",
+          usagePermission: data.usagePermission ?? "disallowed",
+          editPermission: data.editPermission ?? null,
+          createdAt: data.createdAt ?? null,
+          links: data.links ?? [],
+          viewCount: data.viewCount ?? 0,
+          likeCount: data.likeCount ?? 0,
+          downloadCount: data.downloadCount ?? 0,
+          hashtags: data.hashtags ?? [],
+        })
+
+        // ===== 閲覧数処理 =====
         if (!countedRef.current) {
 
           countedRef.current = true
@@ -87,46 +108,56 @@ export default function SkinDetail() {
           const viewKey = `viewed_${id}_${today}`
 
           if (localStorage.getItem(viewKey)) return
-
           localStorage.setItem(viewKey, "1")
 
-          const sessionId = localStorage.getItem("sessionId") ||
+          const sessionId =
+            localStorage.getItem("sessionId") ||
             crypto.randomUUID()
 
           localStorage.setItem("sessionId", sessionId)
 
           const viewRef = doc(db, "skins", id, "views", sessionId)
-          const viewSnap = await getDoc(viewRef)
 
-          if (viewSnap.exists()) return
+          try {
 
-          await setDoc(viewRef, {
-            createdAt: serverTimestamp(),
-          })
+            const viewSnap = await getDoc(viewRef)
+            if (!viewSnap.exists()) {
 
-          await updateDoc(skinRef, {
-            viewCount: increment(1),
-            [`dailyViews.${today}`]: increment(1),
-          })
+              await setDoc(viewRef, {
+                createdAt: serverTimestamp(),
+              })
+
+              await runTransaction(db, async (tx) => {
+                const freshSnap = await tx.get(skinRef)
+                if (!freshSnap.exists()) return
+
+                tx.update(skinRef, {
+                  viewCount: increment(1),
+                  [`dailyViews.${today}`]: increment(1),
+                })
+              })
+            }
+
+          } catch (e) {
+            console.warn("view increment skipped", e)
+          }
         }
       }
     }
 
-    if (id) fetchSkin()
+    fetchSkin()
 
-  }, [id])
+  }, [id, loading])
 
 
-  // いいね状態確認
+  // ===== いいね状態確認 =====
   useEffect(() => {
 
     if (!user) return
 
     const checkLike = async () => {
-
       const likeRef = doc(db, "skins", id, "likes", user.uid)
       const snap = await getDoc(likeRef)
-
       setLiked(snap.exists())
     }
 
@@ -154,6 +185,7 @@ export default function SkinDetail() {
     skin.skinType === "classic" ? "Classic" : "Slim"
 
 
+  // ===== いいね（トランザクション化） =====
   const toggleLike = async () => {
 
     if (!user) {
@@ -161,60 +193,73 @@ export default function SkinDetail() {
       return
     }
 
-    const likeRef = doc(db, "skins", id, "likes", user.uid)
     const skinRef = doc(db, "skins", id)
+    const likeRef = doc(db, "skins", id, "likes", user.uid)
 
-    const snap = await getDoc(likeRef)
+    await runTransaction(db, async (tx) => {
 
-    if (snap.exists()) {
+      const likeSnap = await tx.get(likeRef)
 
-      await deleteDoc(likeRef)
+      if (likeSnap.exists()) {
 
-      await updateDoc(skinRef, {
-        likeCount: increment(-1),
-      })
+        tx.delete(likeRef)
+        tx.update(skinRef, {
+          likeCount: increment(-1),
+        })
 
-      setLiked(false)
+        setLiked(false)
 
-      setSkin(prev =>
-        prev ? { ...prev, likeCount: (prev.likeCount || 1) - 1 } : prev
-      )
+        setSkin(prev =>
+          prev
+            ? { ...prev, likeCount: (prev.likeCount || 1) - 1 }
+            : prev
+        )
 
-    } else {
+      } else {
 
-      await setDoc(likeRef, {
-        createdAt: serverTimestamp(),
-      })
+        tx.set(likeRef, {
+          createdAt: serverTimestamp(),
+        })
 
-      await updateDoc(skinRef, {
-        likeCount: increment(1),
-      })
+        tx.update(skinRef, {
+          likeCount: increment(1),
+        })
 
-      setLiked(true)
+        setLiked(true)
 
-      setSkin(prev =>
-        prev ? { ...prev, likeCount: (prev.likeCount || 0) + 1 } : prev
-      )
-    }
+        setSkin(prev =>
+          prev
+            ? { ...prev, likeCount: (prev.likeCount || 0) + 1 }
+            : prev
+        )
+      }
+    })
   }
 
+
+  // ===== ダウンロード =====
   const handleDownload = async () => {
 
     try {
 
       const skinRef = doc(db, "skins", id)
 
-      // ダウンロード数カウント
-      await updateDoc(skinRef, {
-        downloadCount: increment(1)
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(skinRef)
+        if (!snap.exists()) return
+
+        tx.update(skinRef, {
+          downloadCount: increment(1),
+        })
       })
 
       setSkin(prev =>
-        prev ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 } : prev
+        prev
+          ? { ...prev, downloadCount: (prev.downloadCount || 0) + 1 }
+          : prev
       )
 
       const res = await fetch(skin.imageUrl)
-
       const blob = await res.blob()
 
       const url = window.URL.createObjectURL(blob)
@@ -295,12 +340,9 @@ export default function SkinDetail() {
 
 
         {/* ハッシュタグ */}
-
         {skin.hashtags && skin.hashtags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
-
             {skin.hashtags.map((tagObj, i) => (
-
               <span
                 key={tagObj.id || i}
                 onClick={() =>
@@ -310,9 +352,7 @@ export default function SkinDetail() {
               >
                 #{tagObj.tag}
               </span>
-
             ))}
-
           </div>
         )}
 
@@ -345,23 +385,19 @@ export default function SkinDetail() {
         </div>
 
 
-        {skin.description && (
-          <p className="text-sm leading-relaxed pt-2">
-            {skin.description}
-          </p>
-        )}
+        {/* ★ 常に表示 */}
+        <p className="text-sm leading-relaxed pt-2">
+          {skin.description || "説明なし"}
+        </p>
 
 
         {skin.links && skin.links.length > 0 && (
-
           <div className="pt-4 space-y-2">
-
             <p className="text-sm font-medium opacity-70">
               関連リンク
             </p>
 
             {skin.links.map((link) => (
-
               <a
                 key={link.id}
                 href={link.url}
@@ -371,24 +407,19 @@ export default function SkinDetail() {
               >
                 {link.label}
               </a>
-
             ))}
-
           </div>
-
         )}
 
 
         {skin.usagePermission === "allowed" && (
           <div className="pt-4">
-
             <button
               onClick={handleDownload}
               className="bg-accent text-white px-6 py-2 rounded-xl"
             >
               ダウンロード
             </button>
-
           </div>
         )}
 

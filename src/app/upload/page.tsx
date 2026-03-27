@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import {
   collection,
   addDoc,
@@ -13,6 +13,11 @@ import { db, auth } from "@/lib/firebase"
 import { useRouter } from "next/navigation"
 import { useAuthState } from "react-firebase-hooks/auth"
 
+import SkinViewer from "@/components/SkinViewer"
+
+import * as skinview3d from "skinview3d"
+import { SKIN_VIEWER_CONFIG } from "@/lib/skinViewerConfig"
+
 import { DndContext, closestCenter } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -22,72 +27,9 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
-type LinkItem = {
-  id: string
-  label: string
-  url: string
-}
-
 type HashtagItem = {
   id: string
   tag: string
-}
-
-function SortableItem({
-  link,
-  updateLink,
-  removeLink,
-}: {
-  link: LinkItem
-  updateLink: (id: string, key: "label" | "url", value: string) => void
-  removeLink: (id: string) => void
-}) {
-
-  const { attributes, listeners, setNodeRef, transform, transition } =
-    useSortable({ id: link.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-start gap-3 bg-[var(--sub-background)] p-3 rounded-xl"
-    >
-      <div {...attributes} {...listeners} className="cursor-grab pt-2 opacity-60">
-        ︙
-      </div>
-
-      <div className="flex-1 space-y-2">
-        <input
-          className="w-full p-2 rounded-lg bg-white"
-          placeholder="サイト名"
-          value={link.label}
-          onChange={(e) =>
-            updateLink(link.id, "label", e.target.value)
-          }
-        />
-        <input
-          className="w-full p-2 rounded-lg bg-white"
-          placeholder="URL"
-          value={link.url}
-          onChange={(e) =>
-            updateLink(link.id, "url", e.target.value)
-          }
-        />
-      </div>
-
-      <button
-        onClick={() => removeLink(link.id)}
-        className="text-red-500 pt-2"
-      >
-        🗑
-      </button>
-    </div>
-  )
 }
 
 function SortableHashtagItem({
@@ -154,22 +96,11 @@ export default function UploadPage() {
   const [editPermission, setEditPermission] =
     useState<"allowed" | "disallowed">("disallowed")
 
-  const [links, setLinks] = useState<LinkItem[]>([])
   const [hashtags, setHashtags] = useState<HashtagItem[]>([])
 
-  const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const isInvalid = (value: any) =>
-    submitted && (!value || value === "")
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0]
-    if (!selected) return
-    setFile(selected)
-    setPreviewUrl(URL.createObjectURL(selected))
-  }
-
+  // ===== ハッシュタグ =====
   const addHashtag = () => {
     setHashtags([
       ...hashtags,
@@ -190,50 +121,26 @@ export default function UploadPage() {
   }
 
   const handleDragEnd = (event: any) => {
-
     const { active, over } = event
     if (!over || active.id === over.id) return
 
-    const oldIndexLinks = links.findIndex((l) => l.id === active.id)
-    const newIndexLinks = links.findIndex((l) => l.id === over.id)
+    const oldIndex = hashtags.findIndex((t) => t.id === active.id)
+    const newIndex = hashtags.findIndex((t) => t.id === over.id)
 
-    if (oldIndexLinks !== -1 && newIndexLinks !== -1) {
-      setLinks(arrayMove(links, oldIndexLinks, newIndexLinks))
-      return
-    }
-
-    const oldIndexTags = hashtags.findIndex((t) => t.id === active.id)
-    const newIndexTags = hashtags.findIndex((t) => t.id === over.id)
-
-    if (oldIndexTags !== -1 && newIndexTags !== -1) {
-      setHashtags(arrayMove(hashtags, oldIndexTags, newIndexTags))
-    }
+    setHashtags(arrayMove(hashtags, oldIndex, newIndex))
   }
 
-  const addLink = () => {
-    setLinks([
-      ...links,
-      { id: crypto.randomUUID(), label: "", url: "" },
-    ])
+  // ===== ファイル選択 =====
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0]
+    if (!selected) return
+
+    setFile(selected)
+    setPreviewUrl(URL.createObjectURL(selected))
   }
 
-  const updateLink = (
-    id: string,
-    key: "label" | "url",
-    value: string
-  ) => {
-    setLinks(
-      links.map((link) =>
-        link.id === id ? { ...link, [key]: value } : link
-      )
-    )
-  }
-
-  const removeLink = (id: string) => {
-    setLinks(links.filter((link) => link.id !== id))
-  }
-
-  const uploadToCloudinary = async (file: File) => {
+  // ===== Cloudinary =====
+  const uploadToCloudinary = async (file: Blob | File) => {
 
     const formData = new FormData()
     formData.append("file", file)
@@ -256,11 +163,92 @@ export default function UploadPage() {
     return data.secure_url
   }
 
+  // ===== サムネイル生成 =====
+  const generateThumbnail = async (): Promise<Blob> => {
+
+    const canvas = document.createElement("canvas")
+
+    const viewer = new skinview3d.SkinViewer({
+      canvas,
+      width: 300,
+      height: 400,
+    })
+
+    const trimBottom = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return canvas
+
+      const { width, height } = canvas
+      const imageData = ctx.getImageData(0, 0, width, height)
+      const data = imageData.data
+
+      let bottom = height
+
+      // 下から上へスキャン
+      for (let y = height - 1; y >= 0; y--) {
+        for (let x = 0; x < width; x++) {
+          const index = (y * width + x) * 4
+          const alpha = data[index + 3]
+
+          if (alpha > 0) {
+            bottom = y
+            break
+          }
+        }
+        if (bottom !== height) break
+      }
+
+      // 新しいcanvasに切り出し
+      const trimmedCanvas = document.createElement("canvas")
+      trimmedCanvas.width = width
+      trimmedCanvas.height = bottom + 1
+
+      const trimmedCtx = trimmedCanvas.getContext("2d")
+      if (!trimmedCtx) return canvas
+
+      trimmedCtx.drawImage(
+        canvas,
+        0, 0, width, bottom + 1,
+        0, 0, width, bottom + 1
+      )
+
+      return trimmedCanvas
+    }
+
+    viewer.controls.enableRotate = false
+    viewer.controls.enableZoom = false
+    viewer.controls.enablePan = false
+
+    viewer.zoom = SKIN_VIEWER_CONFIG.thumbnail.zoom
+    viewer.fov = SKIN_VIEWER_CONFIG.thumbnail.fov
+    viewer.playerObject.rotation.y = SKIN_VIEWER_CONFIG.thumbnail.rotationY
+    viewer.playerObject.rotation.x = SKIN_VIEWER_CONFIG.thumbnail.rotationX
+
+    viewer.playerObject.position.y = -4
+
+    await viewer.loadSkin(previewUrl, {
+      model: skinType === "slim" ? "slim" : "default",
+    })
+
+    // ★ここが超重要
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    const trimmedCanvas = trimBottom(canvas)
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) throw new Error("thumbnail failed")
+        resolve(blob)
+      }, "image/png")
+    })
+  }
+
+  // ===== 送信 =====
   const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault()
-    setSubmitted(true)
-
     if (!title || !file) return
 
     try {
@@ -269,18 +257,21 @@ export default function UploadPage() {
 
       const imageUrl = await uploadToCloudinary(file)
 
-      // ハッシュタグ正規化
+      const thumbnailBlob = await generateThumbnail()
+      const thumbnailUrl = await uploadToCloudinary(thumbnailBlob)
+
+      // ハッシュタグ整理
       const cleanedTags = hashtags
         .map((t) => t.tag.trim().toLowerCase().replace(/^#/, ""))
         .filter((t) => t !== "")
 
       const uniqueTags = Array.from(new Set(cleanedTags))
 
-      // スキン保存
       await addDoc(collection(db, "skins"), {
         title,
         description,
         imageUrl,
+        thumbnailUrl,
         skinType,
         creatorId: user?.uid,
         creatorName: user?.displayName,
@@ -290,7 +281,6 @@ export default function UploadPage() {
           usagePermission === "allowed"
             ? editPermission
             : null,
-        links,
 
         hashtags: uniqueTags.map((tag) => ({
           id: crypto.randomUUID(),
@@ -302,32 +292,16 @@ export default function UploadPage() {
         viewCount: 0,
         likeCount: 0,
         downloadCount: 0,
+        dailyViews: {},
         createdAt: serverTimestamp(),
       })
-
-      // ★ tagStats更新
-      for (const tag of uniqueTags) {
-
-        const ref = doc(db, "tagStats", tag)
-
-        await setDoc(
-          ref,
-          {
-            tag,
-            count: increment(1),
-            recentCount: increment(1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        )
-      }
 
       router.push("/")
 
     } catch (err) {
 
       console.error(err)
-      alert("アップロード中にエラーが発生しました")
+      alert("アップロード失敗")
 
     } finally {
       setLoading(false)
@@ -338,7 +312,7 @@ export default function UploadPage() {
   if (!user) return <p className="p-10">ログインしてください</p>
 
   return (
-    <div className="max-w-xl mx-auto mt-10 bg-[var(--sub-background)] p-8 rounded-2xl shadow space-y-6">
+    <div className="max-w-xl mx-auto mt-10 bg-[var(--sub-background)] p-8 rounded-2xl space-y-6">
 
       <h1 className="text-2xl font-bold">
         スキンをアップロード
@@ -350,11 +324,14 @@ export default function UploadPage() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="スキン名"
-          className={`w-full p-3 rounded-xl bg-[var(--background)] border-2 ${
-            isInvalid(title)
-              ? "border-[var(--accent)]"
-              : "border-transparent"
-          }`}
+          className="w-full p-3 rounded-xl bg-[var(--background)]"
+        />
+
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="説明"
+          className="w-full p-3 rounded-xl bg-[var(--background)]"
         />
 
         {/* ハッシュタグ */}
@@ -389,23 +366,23 @@ export default function UploadPage() {
 
         </div>
 
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="説明（任意）"
-          className="w-full p-3 rounded-xl bg-[var(--background)]"
-        />
-
         <input
           type="file"
           accept="image/png"
           onChange={handleFileChange}
-          className={`w-full p-3 rounded-xl bg-[var(--background)] border-2 ${
-            isInvalid(file)
-              ? "border-[var(--accent)]"
-              : "border-transparent"
-          }`}
+          className="w-full p-3 rounded-xl bg-[var(--background)]"
         />
+
+        {/* 3Dプレビュー */}
+        {previewUrl && (
+          <div className="bg-white rounded-2xl p-4 flex justify-center">
+            <SkinViewer
+              skinUrl={previewUrl}
+              skinType={skinType}
+              mode="detail"
+            />
+          </div>
+        )}
 
         {/* スキンタイプ */}
         <div className="space-y-2">
@@ -416,8 +393,8 @@ export default function UploadPage() {
               type="button"
               onClick={() => setSkinType("classic")}
               className={`px-4 py-2 rounded-xl ${skinType === "classic"
-                  ? "bg-[var(--accent)] text-white"
-                  : "bg-[var(--background)]"
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--background)]"
                 }`}
             >
               Classic
@@ -427,8 +404,8 @@ export default function UploadPage() {
               type="button"
               onClick={() => setSkinType("slim")}
               className={`px-4 py-2 rounded-xl ${skinType === "slim"
-                  ? "bg-[var(--accent)] text-white"
-                  : "bg-[var(--background)]"
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--background)]"
                 }`}
             >
               Slim
@@ -445,8 +422,8 @@ export default function UploadPage() {
               type="button"
               onClick={() => setUsagePermission("allowed")}
               className={`px-4 py-2 rounded-xl ${usagePermission === "allowed"
-                  ? "bg-[var(--accent)] text-white"
-                  : "bg-[var(--background)]"
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--background)]"
                 }`}
             >
               使用OK
@@ -456,8 +433,8 @@ export default function UploadPage() {
               type="button"
               onClick={() => setUsagePermission("disallowed")}
               className={`px-4 py-2 rounded-xl ${usagePermission === "disallowed"
-                  ? "bg-[var(--accent)] text-white"
-                  : "bg-[var(--background)]"
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--background)]"
                 }`}
             >
               使用NG
@@ -475,8 +452,8 @@ export default function UploadPage() {
                 type="button"
                 onClick={() => setEditPermission("allowed")}
                 className={`px-4 py-2 rounded-xl ${editPermission === "allowed"
-                    ? "bg-[var(--accent)] text-white"
-                    : "bg-[var(--background)]"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
                   }`}
               >
                 加工OK
@@ -486,8 +463,8 @@ export default function UploadPage() {
                 type="button"
                 onClick={() => setEditPermission("disallowed")}
                 className={`px-4 py-2 rounded-xl ${editPermission === "disallowed"
-                    ? "bg-[var(--accent)] text-white"
-                    : "bg-[var(--background)]"
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--background)]"
                   }`}
               >
                 加工NG
@@ -495,6 +472,7 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
 
         <button
           type="submit"
