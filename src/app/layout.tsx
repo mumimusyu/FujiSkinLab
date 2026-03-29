@@ -22,7 +22,7 @@ export default function RootLayout({
 
         {/* Main Layout */}
         <div className="flex-1">
-          <div className="max-w-6xl mx-auto px-6 py-8">
+          <div className="max-w-7xl mx-auto px-6 py-8">
 
             {/* 将来広告を入れられる2カラム構造 */}
             <div className="grid grid-cols-12 gap-6">

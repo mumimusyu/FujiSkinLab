@@ -64,14 +64,14 @@ export default function SkinCard({ skin }: Props) {
   return (
     <Link href={`/skins/${id}`}>
 
-      <div className="bg-[var(--sub-background)] rounded-2xl p-4 hover:shadow-lg transition">
+      <div className="bg-[var(--sub-background)] rounded-2xl p-4 hover:shadow-lg transition w-[200px]">
 
         {/* サムネイル */}
-        <div className="bg-white rounded-2xl p-2 mb-4 flex items-end justify-center h-[200px]">
+        <div className="bg-white rounded-2xl mb-4 h-[200px] relative overflow-hidden">
           <img
             src={displayImage}
             alt={title}
-            className="h-full object-contain"
+            className="absolute inset-0 w-full h-full object-cover object-bottom"
           />
         </div>
 

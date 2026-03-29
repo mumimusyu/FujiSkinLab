@@ -185,10 +185,16 @@ export default function SearchPage() {
 
           {loading && <p>読み込み中...</p>}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {skins.map((skin) => (
-              <SkinCard key={skin.id} skin={skin} />
-            ))}
+          <div className="w-full flex justify-center">
+            <div className="grid gap-4
+    grid-cols-[repeat(auto-fit,200px)]
+    justify-center">
+
+              {skins.map((skin) => (
+                <SkinCard key={skin.id} skin={skin} />
+              ))}
+
+            </div>
           </div>
 
           {!loading && skins.length === 0 && (

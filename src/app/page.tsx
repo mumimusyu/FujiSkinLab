@@ -126,7 +126,7 @@ export default function Home() {
   }, [lastDoc, hasMore])
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-8 space-y-10">
+    <main className="w-full py-8 space-y-10">
 
       {/* タイトル */}
       <div className="text-center">
@@ -156,10 +156,16 @@ export default function Home() {
           おすすめスキン
         </h2>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-          {skins.map((skin) => (
-            <SkinCard key={skin.id} skin={skin} />
-          ))}
+        <div className="w-full">
+          <div className="grid gap-4
+          grid-cols-[repeat(auto-fit,200px)]
+          justify-center">
+
+            {skins.map((skin) => (
+              <SkinCard key={skin.id} skin={skin} />
+            ))}
+
+          </div>
         </div>
 
         {loading && hasMore && (

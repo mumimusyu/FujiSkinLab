@@ -183,7 +183,7 @@ export default function UploadPage() {
     viewer.playerObject.rotation.y = SKIN_VIEWER_CONFIG.thumbnail.rotationY
     viewer.playerObject.rotation.x = SKIN_VIEWER_CONFIG.thumbnail.rotationX
 
-    viewer.playerObject.position.y = -4
+    viewer.playerObject.position.y = -5
 
     await viewer.loadSkin(previewUrl, {
       model: skinType === "slim" ? "slim" : "default",
