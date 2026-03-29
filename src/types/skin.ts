@@ -13,6 +13,7 @@ export type Skin = {
   creatorId: string
   creatorName?: string
   creatorPhotoURL?: string
+  thumbnailUrl?: string
 
   createdAt?: any
 

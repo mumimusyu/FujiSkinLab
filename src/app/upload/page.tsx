@@ -174,48 +174,6 @@ export default function UploadPage() {
       height: 400,
     })
 
-    const trimBottom = (canvas: HTMLCanvasElement): HTMLCanvasElement => {
-
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return canvas
-
-      const { width, height } = canvas
-      const imageData = ctx.getImageData(0, 0, width, height)
-      const data = imageData.data
-
-      let bottom = height
-
-      // 下から上へスキャン
-      for (let y = height - 1; y >= 0; y--) {
-        for (let x = 0; x < width; x++) {
-          const index = (y * width + x) * 4
-          const alpha = data[index + 3]
-
-          if (alpha > 0) {
-            bottom = y
-            break
-          }
-        }
-        if (bottom !== height) break
-      }
-
-      // 新しいcanvasに切り出し
-      const trimmedCanvas = document.createElement("canvas")
-      trimmedCanvas.width = width
-      trimmedCanvas.height = bottom + 1
-
-      const trimmedCtx = trimmedCanvas.getContext("2d")
-      if (!trimmedCtx) return canvas
-
-      trimmedCtx.drawImage(
-        canvas,
-        0, 0, width, bottom + 1,
-        0, 0, width, bottom + 1
-      )
-
-      return trimmedCanvas
-    }
-
     viewer.controls.enableRotate = false
     viewer.controls.enableZoom = false
     viewer.controls.enablePan = false
@@ -234,8 +192,6 @@ export default function UploadPage() {
     // ★ここが超重要
     await new Promise((resolve) => requestAnimationFrame(resolve))
     await new Promise((resolve) => requestAnimationFrame(resolve))
-
-    const trimmedCanvas = trimBottom(canvas)
 
     return new Promise((resolve) => {
       canvas.toBlob((blob) => {
